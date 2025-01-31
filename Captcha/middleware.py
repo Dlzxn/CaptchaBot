@@ -7,7 +7,7 @@ import random, os, asyncio
 from dotenv import load_dotenv
 
 from models.CRUD import get_user_by_id, create_user
-from Captcha.create_captcha import generate_image_captcha, generate_math_image_captcha
+from Captcha.create_captcha import generate_image_captcha, generate_math_image_captcha, generate_ariphmetic
 from models.create_database import get_session
 from logs.loger_cfg import logger
 
@@ -48,8 +48,6 @@ class CaptchaMiddleware(BaseMiddleware):
                         is_admin=False
                     )
                     logger.info(f'Создан новый пользователь - {event.from_user.username}')
-                    if os.path.exists(user_captcha[str(event.from_user.id)]["path"]):
-                        os.remove(user_captcha[str(event.from_user.id)]["path"])
                     del USER_CAPTCHA[str(event.from_user.id)]
                     await event.answer("✅ Капча пройдена! Добро пожаловать.")
                     return await handler(event, data)
@@ -59,12 +57,13 @@ class CaptchaMiddleware(BaseMiddleware):
 
             else:
                 await self.bot.delete_message(message_id=event.message_id, chat_id=event.chat.id)
-                rand_num: int = random.randint(1, 2)
-                if rand_num == 1:
-                    answer, path = generate_math_image_captcha()
-                else:
-                    answer, path = generate_image_captcha()
+                # rand_num: int = random.randint(1, 2)
+                # if rand_num == 1:
+                #     answer, path = generate_math_image_captcha()
+                # else:
+                #     answer, path = generate_image_captcha()
 
+                answer, question = generate_ariphmetic()
                 USER_CAPTCHA[str(event.from_user.id)] = {
                     "answer": answer,
                     "time_start": t(),
@@ -75,24 +74,17 @@ class CaptchaMiddleware(BaseMiddleware):
                     USER_CAPTCHA[str(event.from_user.id)] = {
                         "answer": answer,
                         "time_start": t(),
-                        "path": path  # Сохраняем путь!
                     }
 
-                    photo = FSInputFile(path)
                     try:
-                        await self.bot.send_photo(
+                        await self.bot.send_message(
                             event.from_user.id,
-                            photo=photo,
-                            caption="Введите ответ в чат."
-                        )
+                            text = f"Для продолжения решите: {question}")
                     except TelegramForbiddenError:
-                        message_delete = await self.bot.send_photo(
-                            event.chat.id,
-                            photo=photo,
-                            caption="Введите ответ в чат."
-                        )
+                        message_delete = await self.bot.send_message(
+                            event.chat,id,
+                            text = f"Для продолжения решите: {question}")
                         await asyncio.sleep(int(self.time))
-
                         await self.bot.delete_message(message_id=message_delete.message_id, chat_id=message_delete.chat.id)
                     except Exception as err:
                         logger.error(err)
@@ -105,9 +97,6 @@ class CaptchaMiddleware(BaseMiddleware):
                     if user_id_str in USER_CAPTCHA:
                         user_captcha = USER_CAPTCHA[user_id_str]
                         logger.info(f"Пользователь {event.from_user.id} удален: капча не пройдена")
-
-                        if "path" in user_captcha and os.path.exists(user_captcha["path"]):
-                            os.remove(user_captcha["path"])
 
                         del USER_CAPTCHA[user_id_str]
                         await self.bot.ban_chat_member(
